@@ -44,21 +44,36 @@ UrbanZen is a comprehensive, secure, and fault-tolerant IoT ecosystem designed t
 - Docker & Docker Compose
 - Kubernetes (optional)
 
-### Development Setup
+### Automated Setup
 ```bash
 # Clone the repository
 git clone https://github.com/bhanukaranwal/UrbanZen.git
 cd UrbanZen
 
+# Run the automated setup script
+./scripts/setup.sh
+```
+
+### Manual Setup
+```bash
 # Start infrastructure services
 docker-compose up -d
 
-# Run microservices
+# Build and run microservices
+make build
 make run-services
 
 # Start frontend applications
 make run-frontend
 ```
+
+### Access Applications
+- **Admin Dashboard**: http://localhost:3001
+- **Public Dashboard**: http://localhost:3002  
+- **API Gateway**: http://localhost:8080
+- **API Documentation**: http://localhost:8080/swagger/index.html
+- **Grafana Monitoring**: http://localhost:3000 (admin/admin)
+- **Prometheus Metrics**: http://localhost:9090
 
 ## Project Structure
 
@@ -142,23 +157,39 @@ UrbanZen/
 - Compliance reporting
 - Public grievance system
 
-## Performance & Scalability
+## Implementation Status
 
-- Handles 1M+ devices with 99.99% uptime
-- API response times < 200ms
-- Real-time processing < 1 second latency
-- Horizontal auto-scaling
-- Database sharding
-- CDN integration
+### ✅ Completed Components
+- **Project Structure**: Complete microservices architecture
+- **API Gateway**: Go-based gateway with JWT authentication
+- **Device Management**: IoT device registration and monitoring
+- **Database Layer**: PostgreSQL + TimescaleDB + schema design
+- **Admin Dashboard**: React + TypeScript with Material-UI
+- **Citizen Mobile App**: Flutter app structure
+- **Data Ingestion**: Kafka-based real-time data processing
+- **Analytics Service**: Python + FastAPI framework
+- **Docker Configuration**: Complete containerization
+- **Kubernetes Deployment**: Production-ready manifests
+- **CI/CD Pipeline**: GitHub Actions automation
+- **Monitoring**: Prometheus + Grafana setup
+- **MQTT Broker**: Mosquitto configuration
+- **IoT Simulators**: Water meter simulator
+- **ML Models**: Anomaly detection implementation
+- **Documentation**: Comprehensive API and deployment docs
+- **Setup Automation**: One-click development setup
 
-## Monitoring & Observability
+### 🚧 In Progress
+- Additional microservices (Notification, User Management, Billing)
+- Complete frontend implementations
+- Advanced ML models
+- Government integration APIs
 
-- Prometheus metrics collection
-- Grafana dashboards
-- ELK Stack for logging
-- Jaeger distributed tracing
-- AlertManager for notifications
-- Uptime monitoring
+### 📋 Planned Features
+- Advanced analytics dashboards
+- Mobile app completion
+- Security compliance (CERT-In)
+- Performance optimization
+- Multi-language support
 
 ## Deployment
 
