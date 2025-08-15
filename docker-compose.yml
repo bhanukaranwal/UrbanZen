@@ -1,0 +1,317 @@
+version: '3.8'
+
+services:
+  # Databases
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: urbanzen
+      POSTGRES_USER: urbanzen
+      POSTGRES_PASSWORD: urbanzen_secure_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/databases/postgres/init:/docker-entrypoint-initdb.d
+    networks:
+      - urbanzen
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_DB: urbanzen_timeseries
+      POSTGRES_USER: urbanzen
+      POSTGRES_PASSWORD: urbanzen_secure_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./infrastructure/databases/timescaledb/init:/docker-entrypoint-initdb.d
+    networks:
+      - urbanzen
+
+  mongodb:
+    image: mongo:6.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: urbanzen
+      MONGO_INITDB_ROOT_PASSWORD: urbanzen_secure_password
+      MONGO_INITDB_DATABASE: urbanzen
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./infrastructure/databases/mongodb/init:/docker-entrypoint-initdb.d
+    networks:
+      - urbanzen
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --requirepass urbanzen_secure_password
+    networks:
+      - urbanzen
+
+  influxdb:
+    image: influxdb:2.0
+    environment:
+      INFLUXDB_DB: urbanzen
+      INFLUXDB_ADMIN_USER: urbanzen
+      INFLUXDB_ADMIN_PASSWORD: urbanzen_secure_password
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    networks:
+      - urbanzen
+
+  # Message Queue
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - urbanzen
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - urbanzen
+
+  # MQTT Broker
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./infrastructure/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    networks:
+      - urbanzen
+
+  # Search Engine
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.8.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - urbanzen
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.8.0
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    networks:
+      - urbanzen
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - urbanzen
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: urbanzen_secure_password
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infrastructure/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - urbanzen
+
+  # Services
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - POSTGRES_URL=postgres://urbanzen:urbanzen_secure_password@postgres:5432/urbanzen?sslmode=disable
+      - REDIS_URL=redis://:urbanzen_secure_password@redis:6379/0
+      - JWT_SECRET=urbanzen_jwt_secret_key_very_secure
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - urbanzen
+
+  device-mgmt:
+    build: ./services/device-mgmt
+    ports:
+      - "8081:8081"
+    environment:
+      - POSTGRES_URL=postgres://urbanzen:urbanzen_secure_password@postgres:5432/urbanzen?sslmode=disable
+      - TIMESCALEDB_URL=postgres://urbanzen:urbanzen_secure_password@timescaledb:5432/urbanzen_timeseries?sslmode=disable
+      - MQTT_BROKER=tcp://mosquitto:1883
+    depends_on:
+      - postgres
+      - timescaledb
+      - mosquitto
+    networks:
+      - urbanzen
+
+  data-ingestion:
+    build: ./services/data-ingestion
+    ports:
+      - "8082:8082"
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+      - TIMESCALEDB_URL=postgres://urbanzen:urbanzen_secure_password@timescaledb:5432/urbanzen_timeseries?sslmode=disable
+      - INFLUXDB_URL=http://influxdb:8086
+    depends_on:
+      - kafka
+      - timescaledb
+      - influxdb
+    networks:
+      - urbanzen
+
+  analytics:
+    build: ./services/analytics
+    ports:
+      - "8083:8083"
+    environment:
+      - TIMESCALEDB_URL=postgres://urbanzen:urbanzen_secure_password@timescaledb:5432/urbanzen_timeseries?sslmode=disable
+      - MONGODB_URL=mongodb://urbanzen:urbanzen_secure_password@mongodb:27017/urbanzen
+      - REDIS_URL=redis://:urbanzen_secure_password@redis:6379/0
+    depends_on:
+      - timescaledb
+      - mongodb
+      - redis
+    networks:
+      - urbanzen
+
+  notification:
+    build: ./services/notification
+    ports:
+      - "8084:8084"
+    environment:
+      - POSTGRES_URL=postgres://urbanzen:urbanzen_secure_password@postgres:5432/urbanzen?sslmode=disable
+      - REDIS_URL=redis://:urbanzen_secure_password@redis:6379/0
+      - KAFKA_BROKERS=kafka:9092
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+    networks:
+      - urbanzen
+
+  user-mgmt:
+    build: ./services/user-mgmt
+    ports:
+      - "8085:8085"
+    environment:
+      - POSTGRES_URL=postgres://urbanzen:urbanzen_secure_password@postgres:5432/urbanzen?sslmode=disable
+      - REDIS_URL=redis://:urbanzen_secure_password@redis:6379/0
+      - JWT_SECRET=urbanzen_jwt_secret_key_very_secure
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - urbanzen
+
+  billing:
+    build: ./services/billing
+    ports:
+      - "8086:8086"
+    environment:
+      - POSTGRES_URL=postgres://urbanzen:urbanzen_secure_password@postgres:5432/urbanzen?sslmode=disable
+      - TIMESCALEDB_URL=postgres://urbanzen:urbanzen_secure_password@timescaledb:5432/urbanzen_timeseries?sslmode=disable
+    depends_on:
+      - postgres
+      - timescaledb
+    networks:
+      - urbanzen
+
+  reporting:
+    build: ./services/reporting
+    ports:
+      - "8087:8087"
+    environment:
+      - POSTGRES_URL=postgres://urbanzen:urbanzen_secure_password@postgres:5432/urbanzen?sslmode=disable
+      - TIMESCALEDB_URL=postgres://urbanzen:urbanzen_secure_password@timescaledb:5432/urbanzen_timeseries?sslmode=disable
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - postgres
+      - timescaledb
+      - elasticsearch
+    networks:
+      - urbanzen
+
+  # Frontend Applications
+  admin-dashboard:
+    build: ./frontend/admin-dashboard
+    ports:
+      - "3001:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080
+    depends_on:
+      - api-gateway
+    networks:
+      - urbanzen
+
+  public-dashboard:
+    build: ./frontend/public-dashboard
+    ports:
+      - "3002:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    depends_on:
+      - api-gateway
+    networks:
+      - urbanzen
+
+networks:
+  urbanzen:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  timescaledb_data:
+  mongodb_data:
+  redis_data:
+  influxdb_data:
+  elasticsearch_data:
+  prometheus_data:
+  grafana_data:
+  mosquitto_data:
+  mosquitto_logs:
