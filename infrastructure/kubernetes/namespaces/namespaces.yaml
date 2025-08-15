@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: urbanzen-prod
+  labels:
+    name: urbanzen-prod
+    environment: production
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: urbanzen-staging
+  labels:
+    name: urbanzen-staging
+    environment: staging
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: urbanzen-dev
+  labels:
+    name: urbanzen-dev
+    environment: development
