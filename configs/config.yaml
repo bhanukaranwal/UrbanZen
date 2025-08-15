@@ -1,0 +1,53 @@
+environment: development
+version: "1.0.0"
+
+server:
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+  idle_timeout: 60s
+
+database:
+  postgres:
+    host: ${POSTGRES_HOST:localhost}
+    port: ${POSTGRES_PORT:5432}
+    user: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:password}
+    dbname: ${POSTGRES_DB:urbanzen}
+    sslmode: ${POSTGRES_SSLMODE:disable}
+    
+  timescaledb:
+    host: ${TIMESCALEDB_HOST:localhost}
+    port: ${TIMESCALEDB_PORT:5433}
+    user: ${TIMESCALEDB_USER:postgres}
+    password: ${TIMESCALEDB_PASSWORD:password}
+    dbname: ${TIMESCALEDB_DB:urbanzen_ts}
+    
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    db: ${REDIS_DB:0}
+
+jwt:
+  secret: ${JWT_SECRET:your-super-secret-jwt-key}
+  expires_in: 24h
+
+kafka:
+  brokers:
+    - ${KAFKA_BROKER:localhost:9092}
+  topics:
+    device_data: "device-telemetry"
+    alerts: "system-alerts"
+    commands: "device-commands"
+    notifications: "user-notifications"
+
+security:
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:3001"
+  rate_limit_per_min: 100
+
+monitoring:
+  metrics_port: 9090
+  log_level: ${LOG_LEVEL:info}
